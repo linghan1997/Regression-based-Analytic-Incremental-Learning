@@ -1,0 +1,22 @@
+seed: 42
+backbone: 'ViT-B/16'
+datasets: ["aircraft", "caltech101", "dtd", "eurosat", "oxford_flowers", "food101", "mnist", "oxford_pets", "stanford_cars", "sun397"]
+num_shots: 16
+#increment: 2
+#initial_increment: 2
+#scenario: "class"
+batch_size: 128
+batch_size_eval: 512
+regularization: 0.1
+fusion_weight: 0.9
+
+kernel_expansion: 0
+feature_expansion: 1
+hidden_dim: 15000
+
+gamma: 0.1
+
+augmentation_time: 1
+
+eval_adapter: 0
+eval_last: 0
