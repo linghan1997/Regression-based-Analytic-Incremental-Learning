@@ -19,6 +19,9 @@ from scenario_datasets.utils import build_data_loader
 from scenario_datasets.collections import CIFAR100, MNIST
 from utils import *
 
+DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+DIR_PATH = os.path.dirname(DIR_PATH)
+
 cfg_file = "configs/analytic_clip.yaml"
 cfg = yaml.load(open(cfg_file, 'r'), Loader=yaml.Loader)
 cfg = EasyDict(cfg)
@@ -42,10 +45,8 @@ for _, train_dataset in enumerate(dataset_sequence):
     else:
         dataset = build_dataset(train_dataset, os.path.join(DIR_PATH, 'datasets'), cfg.num_shots)
     merged_classnames += dataset.classnames
-print(f'Size of cross-domain category set: {len(merged_classnames)}')
 
 fusion_acc_table = np.zeros((len(dataset_sequence), len(dataset_sequence)))
-adapter_acc_table = np.zeros((len(dataset_sequence), len(dataset_sequence)))
 in_domain_acc_list = []
 
 cfg.previous_class_num = 0
@@ -83,8 +84,6 @@ for task_id, train_dataset in enumerate(dataset_sequence):
     cfg.increment = len(dataset.classnames)
     cfg.current_class_num = len(current_class_names)
 
-    print(f"Currently existing a total of {cfg.current_class_num} classes.")
-
     if train_dataset == "cifar100" or train_dataset == "mnist":
         train_loader = dataset.train_loader
     else:
@@ -116,8 +115,6 @@ for task_id, train_dataset in enumerate(dataset_sequence):
         feature_memory = torch.cat([feature_memory, current_train_features], dim=0)
         y = np.concatenate([y, np.zeros((y.shape[0], cfg.increment))], axis=1)
         y = np.concatenate([y, current_train_one_hot_labels], axis=0)
-
-    print(f"Size of Gram matrix in task-{task_id + 1}: {feature_memory.size(0)}")
 
     alpha = krr.train(feature_memory, y)  # obtain the dual parameter
 
@@ -169,10 +166,7 @@ for task_id, train_dataset in enumerate(dataset_sequence):
                 outputs = 100. * test_features @ clip_weights
                 outputs = F.softmax(outputs, dim=-1)
 
-                # In domain acc
                 predict_cls = torch.argmax(outputs, dim=-1)
-                in_range = (predict_cls >= class_range_min) & (predict_cls < class_range_max)
-                in_domain += torch.sum(in_range)
 
                 # Zero-shot acc
                 zs_outputs = outputs
@@ -189,10 +183,6 @@ for task_id, train_dataset in enumerate(dataset_sequence):
                     padding_right = outputs.size(-1) - outputs_adapted.size(-1)
                     outputs_adapted = F.pad(outputs_adapted, pad=(0, padding_right, 0, 0), mode='constant', value=0)
 
-                    adapter_pred = torch.argmax(outputs_adapted, dim=-1)
-                    adapter_in_range = (adapter_pred >= class_range_min) & (adapter_pred < class_range_max)
-                    adapter_in_domain += torch.sum(adapter_in_range)
-
                     outputs[mask] = (1-cfg.fusion_weight) * outputs[mask] + cfg.fusion_weight * outputs_adapted
 
                 fusion_acc1 = cls_acc(outputs, targets)
@@ -203,14 +193,6 @@ for task_id, train_dataset in enumerate(dataset_sequence):
                     outputs = torch.tensor(outputs, device=cfg.device, dtype=torch.float)
                     adapt_acc1 = cls_acc(outputs, targets)
                     adapt_top1 += adapt_acc1[0]
-
-            if test_id <= task_id:
-                pure_adapter_acc = (adapt_top1 / test_num) * 100
-                print(f"Pure adapter acc for dataset-{test_id + 1}: {test_dataset}: {pure_adapter_acc}")
-                adapter_acc_table[task_id, test_id] = pure_adapter_acc
-
-            in_domain_acc = (in_domain / test_num) * 100
-            print(f"In-domain top-1 acc for dataset-{test_id + 1}: {test_dataset}: {in_domain_acc}")
 
             top1 = (top1 / test_num) * 100
             print(f"Zero-shot top-1 acc for dataset-{test_id + 1}: {test_dataset}: {top1}")

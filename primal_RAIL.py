@@ -16,6 +16,10 @@ from scenario_datasets.utils import build_data_loader
 from scenario_datasets.collections import CIFAR100, MNIST
 from utils import *
 
+
+DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+DIR_PATH = os.path.dirname(DIR_PATH)
+
 class continual_clip_adaptor(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -153,6 +157,7 @@ current_class_names = []
 R = None
 
 merged_classnames = []
+
 for _, train_dataset in enumerate(dataset_sequence):
     if train_dataset == "cifar100":
         dataset = CIFAR100(num_shots=-1, preprocess=None, val_transform=None, batch_size=cfg.batch_size)
@@ -162,7 +167,6 @@ for _, train_dataset in enumerate(dataset_sequence):
         dataset = build_dataset(train_dataset, os.path.join(DIR_PATH, 'datasets'), cfg.num_shots)
     merged_classnames += dataset.classnames
     print(len(dataset.classnames))
-print(f'Size of cross-domain category set: {len(merged_classnames)}')
 
 """
 Loading model
@@ -180,7 +184,6 @@ Training on dataset sequence
 """
 for task_id, train_dataset in enumerate(dataset_sequence):
     print(f"------------------ Start training on task-{task_id + 1}: dataset-{train_dataset}. ---------------------")
-
     if train_dataset == "cifar100":
         dataset = CIFAR100(num_shots=cfg.num_shots, preprocess=train_transform, val_transform=val_preprocess,
                            batch_size=cfg.batch_size)
@@ -193,8 +196,6 @@ for task_id, train_dataset in enumerate(dataset_sequence):
     current_class_names += dataset.classnames
     cfg.increment = len(dataset.classnames)
     cfg.current_class_num = len(current_class_names)
-
-    print(f"Currently existing a total of {cfg.current_class_num} classes.")
 
     if train_dataset == "cifar100" or train_dataset == "mnist":
         train_loader = dataset.train_loader
@@ -231,6 +232,7 @@ for task_id, train_dataset in enumerate(dataset_sequence):
                                             tfm=val_preprocess, shuffle=False)
 
         template = ['a photo of a {}.']
+        # template = ['a photo of a {}.', 'a photo of an {}.']
         clip_weights = clip_classifier(merged_classnames, template, continual_clip_adaptor.clip_model, device=cfg.device)
 
         class_range_min, class_range_max = tested_cls_num, tested_cls_num + len(test_set.classnames)
@@ -239,7 +241,6 @@ for task_id, train_dataset in enumerate(dataset_sequence):
 
         top1, top5, test_num = 0.0, 0.0, 0.0
         fusion_top1, fusion_top5 = 0.0, 0.0
-        adapt_top1, adapt_top5 = 0.0, 0.0
 
         for inputs, targets in tqdm(test_loader, desc=f'Evaluating on dataset-{test_id + 1}: {test_dataset}',
                                     total=len(test_loader), unit='batch'):
@@ -252,18 +253,15 @@ for task_id, train_dataset in enumerate(dataset_sequence):
                 outputs = continual_clip_adaptor.zero_shot(inputs, clip_weights)  # (B, C_all)
                 outputs = F.softmax(outputs, dim=-1)
 
-            # In domain acc
             predict_cls = torch.argmax(outputs, dim=-1)
-            in_range = (predict_cls >= class_range_min) & (predict_cls < class_range_max)
-            in_domain += torch.sum(in_range)
 
             # Zero-shot acc
             acc1, acc5 = cls_acc(outputs, targets, topk=(1, 5))
             top1 += acc1
             top5 += acc5
 
-            # Select samples that belong to learned domains determined by CLIP zero-shot
-            mask = predict_cls < cfg.current_class_num  # if less than trained class number
+            # Select ID samples belonging to learned domains by zero-shot
+            mask = predict_cls < cfg.current_class_num
             if torch.sum(mask) > 0:
                 samples_to_adapt = inputs[mask]
                 with torch.no_grad():
@@ -272,31 +270,12 @@ for task_id, train_dataset in enumerate(dataset_sequence):
                 padding_right = outputs.size(-1) - outputs_adapted.size(-1)
                 outputs_adapted = F.pad(outputs_adapted, pad=(0, padding_right, 0, 0), mode='constant', value=0)
 
-                adapter_pred = torch.argmax(outputs_adapted, dim=-1)
-                adapter_in_range = (adapter_pred >= class_range_min) & (adapter_pred < class_range_max)
-                adapter_in_domain += torch.sum(adapter_in_range)
-
                 outputs[mask] = (1-cfg.fusion_weight) * outputs[mask] + cfg.fusion_weight * outputs_adapted
 
             # Fusion acc
             fusion_acc1, fusion_acc5 = cls_acc(outputs, targets, topk=(1, 5))
             fusion_top1 += fusion_acc1
             fusion_top5 += fusion_acc5
-
-            if test_id <= task_id:
-                with torch.no_grad():
-                    outputs = continual_clip_adaptor(inputs)
-                adapt_acc1, adapt_acc5 = cls_acc(outputs, targets, topk=(1, 5))
-                adapt_top1 += adapt_acc1
-                adapt_top5 += adapt_acc5
-
-        if test_id <= task_id:
-            pure_adapter_acc = (adapt_top1 / test_num) * 100
-            print(f"Pure adapter acc for dataset-{test_id + 1}: {test_dataset}: {pure_adapter_acc}")
-            adapter_acc_table[task_id, test_id] = pure_adapter_acc
-
-        in_domain_acc = (in_domain / test_num) * 100
-        print(f"In-domain top-1 acc for dataset-{test_id + 1}: {test_dataset}: {in_domain_acc}")
 
         top1, top5 = (top1 / test_num) * 100, (top5 / test_num) * 100
         print(f"Zero-shot top-1 acc for dataset-{test_id + 1}: {test_dataset}: {top1}")
@@ -316,4 +295,3 @@ avg_avg_acc = np.mean(avg_acc)
 print('average transfer acc: ', transfer_avg_acc)
 print('average average acc: ', avg_avg_acc)
 print('average last acc: ', np.mean(fusion_acc_table[-1, :]))
-
