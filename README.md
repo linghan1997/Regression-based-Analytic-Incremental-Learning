@@ -42,8 +42,21 @@ For the dual RAIL:
 python dual_RAIL.py
 ```
 
+## Citation
+```bash
+@article{xu2024advancing,
+  title={Advancing Cross-domain Discriminability in Continual Learning of Vision-Language Models},
+  author={Xu, Yicheng and Chen, Yuxin and Nie, Jiahao and Wang, Yusong and Zhuang, Huiping and Okumura, Manabu},
+  journal={arXiv preprint arXiv:2406.18868},
+  year={2024}
+}
+```
+---
+
 ## Acknowledgement
 
 Our repo benefits from [CLIP](https://github.com/openai/CLIP) and [CoOp](https://github.com/KaiyangZhou/CoOp). We thank them for their wonderful works.
 
 ---
+
+
