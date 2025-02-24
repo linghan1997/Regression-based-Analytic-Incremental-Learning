@@ -2,6 +2,7 @@
 Official implementation of [Advancing Cross-domain Discriminability in Continual Learning of Vision-Language Models](https://arxiv.org/pdf/2406.18868)
 
 The paper has accepted by NeurIPS 2024.
+Please feel free to contact yxu040@e.ntu.edu.sg or add the wechat: linghan199 for any discussion.
 
 ## Installation
 
